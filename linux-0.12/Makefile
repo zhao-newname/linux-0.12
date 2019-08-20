@@ -65,7 +65,7 @@ Image: boot/bootsect boot/setup tools/system tools/build
 	tools/build boot/bootsect boot/setup tools/kernel $(ROOT_DEV) $(SWAP_DEV) > Image
 	@rm system.tmp
 	@rm tools/kernel -f
-	sync
+	@sync
 
 # 上面的修改就可以保证开启gcc调试后，System文件不变大，build也就不会失败了(build对system大小有
 # 限制)。原先规则为下面两句

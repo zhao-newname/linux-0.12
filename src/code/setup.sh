@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# 如果在编译bochs时遇到libgtk2.0-dev 依赖问题，请手动执行
+#   sudo apt-get install aptitude && sudo aptitude install libgtk2.0-dev
+
 _echo_info(){
     echo -e "[Info]: ${1}"
 }
@@ -10,44 +13,6 @@ _echo_err(){
 
 _echo_succ(){
     echo -e "\033[32m[Succ]: ${1} \033[0m"
-}
-
-bochs_make_install(){
-
-    sudo apt-get install -y build-essential libgtk2.0-dev \
-        libx11-dev xserver-xorg-dev xorg-dev g++ \
-        pkg-config libxcursor-dev libxrandr-dev \
-        libxinerama-dev libxi-dev &> /dev/null
-
-    # libgtk2.0-dev 因为依赖问题安装失败的解决方案
-    # sudo apt-get install aptitude && sudo aptitude install libgtk2.0-dev
-
-    if [ ! -e "bochs-2.6.9.tar.gz" ]; then
-        wget https://downloads.sourceforge.net/project/bochs/bochs/2.6.9/bochs-2.6.9.tar.gz -q --show-progress  && \
-        _echo_succ "Download bochs-2.6.9.tar.gz Sucessfully." || (rm bochs-2.6.9.tar.gz & _echo_err "Download bochs-2.6.9.tar.gz unsuccessfully!!!" )
-    fi
-    tar zxvf bochs-2.6.9.tar.gz &> /dev/null && \
-    _echo_info "tar bochs-2.6.9.tar.gz Sucessfully." || \
-    (rm -rf ../bochs-2.6.9 & _echo_err "tar bochs-2.6.9.tar.gz unsuccessfully!!!" )
-
-    if [ -d "bochs-2.6.9" ];then
-        cd bochs-2.6.9
-        if [ "$1" ] && [ "$1" = "-g" ]
-        then
-            ./configure --enable-gdb-stub --enable-disasm
-        else
-            ./configure --enable-debugger --enable-disasm
-        fi
-        make && \
-        sudo make install
-    fi
-
-}
-
-bochs_install(){
-    sudo apt-get install -y build-essential &> /dev/null
-    sudo apt-get install -y bochs bochs-x bochs-sdl &> /dev/null \
-    && _echo_succ "bochs is installed." || _echo_err "bochs is not installed!!!"
 }
 
 env_install(){
@@ -87,23 +52,58 @@ env_install(){
     fi
 }
 
+bochs_install(){
+
+    sudo apt-get install -y build-essential libgtk2.0-dev \
+        libx11-dev xserver-xorg-dev xorg-dev g++ \
+        pkg-config libxcursor-dev libxrandr-dev \
+        libxinerama-dev libxi-dev &> /dev/null
+    
+    if [ ! -e "bochs-2.6.9.tar.gz" ]; then
+        wget https://downloads.sourceforge.net/project/bochs/bochs/2.6.9/bochs-2.6.9.tar.gz -q --show-progress  && \
+        _echo_succ "Download bochs-2.6.9.tar.gz Sucessfully." || (rm bochs-2.6.9.tar.gz & _echo_err "Download bochs-2.6.9.tar.gz unsuccessfully!!!" )
+    fi
+
+    if [ ! -d "bochs-2.6.9" ];then
+        tar zxvf bochs-2.6.9.tar.gz &> /dev/null && \
+        _echo_info "tar bochs-2.6.9.tar.gz Sucessfully." || \
+        (rm -rf ../bochs-2.6.9 & _echo_err "tar bochs-2.6.9.tar.gz unsuccessfully!!!" )
+    fi
+
+    if [ -d "bochs-2.6.9" ];then
+        cd bochs-2.6.9
+        if [ "$1" ] && [ "$1" = "-d" ];then
+        sudo apt-get install aptitude && sudo aptitude install libgtk2.0-dev
+        ./configure --enable-gdb-stub --enable-disasm 
+        # ./configure --enable-debugger --enable-disasm
+        make  && (cp bochs ../bochs-gdb & _echo_succ "make bochs sucessfully.") || _echo_err "make bochs unsucessfully.!!!"
+        else
+        ./configure --enable-gdb-stub --enable-disasm &> /dev/null
+        make &> /dev/null && (cp bochs ../bochs-gdb & _echo_succ "make bochs sucessfully.") || _echo_err "make bochs unsucessfully.!!!"
+        fi
+    fi
+
+}
+
+## 不建议
+# bochs_install(){
+#    sudo apt-get install -y build-essential &> /dev/null
+#    sudo apt-get install -y bochs bochs-x bochs-sdl &> /dev/null \
+#    && _echo_succ "bochs is installed." || _echo_err "bochs is not installed!!!"
+#}
+
 trap 'onCtrlC' INT
 function onCtrlC () {
     _echo_err "[Warning]: stopped by user."
     rm -rf ${GCC_DIR}
     exit
 }
+echo " 须知"
+echo "     请根据oslab/README.txt中的第二点，修改下载的bochs-2.6.9源码，并重新执行该脚本"
+echo "脚本将完成以下两件事："
+echo "     1. 为系统安装相应的编译环境（make，bin86，gcc-3.4，gcc-multilib）"
+echo "     2. 在脚本当前目录生成一个bochs-gdb（若没有生成,使用./setup.sh -d 重新执行脚本）"
 
-if [ "$1" ] && [ "$1" = "-b" ]
-then
-    bochs_install
-elif [ "$1" ] && [ "$1" = "-bm" ]
-then
-    bochs_make_install $2
-elif [ "$1" ] && [ "$1" = "-e" ]
-then
-    env_install
-else
-    env_install
-    bochs_install
-fi
+env_install
+bochs_install $1
+
