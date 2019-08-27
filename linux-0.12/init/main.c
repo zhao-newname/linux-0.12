@@ -41,7 +41,7 @@
 _syscall0(int, fork)
 // int pause() 系统调用：暂停进程的执行，直到收到一个信号
 _syscall0(int, pause)
-// int setup(void * BIOS) 系统调用：仅用于 linux 初始化(仅在这个程序中被调用)
+// int setup(void * BIOS) 系统调用：仅用于linux初始化(仅在这个程序中被调用)
 _syscall1(int, setup, void *, BIOS)
 // int sync() 系统调用：更新文件系统
 _syscall0(int, sync)
@@ -146,7 +146,7 @@ static long buffer_memory_end = 0;		/* 高速缓冲区末端地址 */
 static long main_memory_start = 0;		/* 主内存开始的位置 */
 static char term[32];					/* 终端设置字符串 */
 
-/* 读取并执行 /etc/rc 文件时所使用的命令行参数和环境参数 */
+/* 读取并执行/etc/rc文件时所使用的命令行参数和环境参数 */
 static char * argv_rc[] = { "/bin/sh", NULL };
 static char * envp_rc[] = { "HOME=/", NULL ,NULL };
 
@@ -169,8 +169,8 @@ int main(void)		/* This really is void, no error here. */
 /*
  * 此时中断还被禁止的，做完必要的设置后就将其开启。
  */
-	ROOT_DEV = ORIG_ROOT_DEV;		/* ROOT_DEV定义在fs/super.c中 */
-	SWAP_DEV = ORIG_SWAP_DEV;		/* SWAP_DEV定义在mm/swap.c中 */
+	ROOT_DEV = ORIG_ROOT_DEV;
+	SWAP_DEV = ORIG_SWAP_DEV;
 	sprintf(term, "TERM=con%dx%d", CON_COLS, CON_ROWS);
 	envp[1] = term;
 	envp_rc[1] = term;
@@ -208,9 +208,9 @@ int main(void)		/* This really is void, no error here. */
 	floppy_init();							/* 软驱初始化 */
 
 	sti();									/* 开启中断 */
-/* 下面过程通过在堆栈中设置的参数，利用中断返回指令启动任务0执行 */
 	move_to_user_mode();
 	if (!fork()) {							/* we count on this going ok */
+		/* 创建任务1（init进程） */
 		init();
 	}
 /*
@@ -222,15 +222,14 @@ int main(void)		/* This really is void, no error here. */
  */
 /*
  * 注意!! 对于任何其他的任务，“pause()”将意味着我们必须等待收到信号才会返回就绪态，但任务0
- * 是唯一例外的情况(参见“schedule()”)，因为任务 0 在任何空闲时间里都会被激活,因此对于任务
- * 0'pause()'仅意味着我们返回来查看是否有其他任务可以运行，如果没有的话，我们就在这里一直循
- * 环执行‘pause()’。
+ * 是唯一例外的情况(参见“schedule()”)，因为任务0在任何空闲时间里都会被激活，因此对于任务
+ * 0 “pause()”仅意味着我们返回来查看是否有其他任务可以运行，如果没有的话，我们就在这里一直循
+ * 环执行。
  */
 
-	/* pause()系统调用会把任务0转换成可中断等待状态，再执行调度函数。但是调度函数发现系统中
-	 没有其他程序可以运行就会切换到任务0，而不依赖任务0的状态。*/
+	/* 调度函数发现系统中没有其他程序可以运行就会切换到任务0 */
 	for(;;) {
-		__asm__("int $0x80"::"a" (__NR_pause));	/* 执行系统调用pause() */
+		__asm__("int $0x80"::"a" (__NR_pause));
 	}
 }
 
@@ -246,33 +245,28 @@ int printf(const char *fmt, ...)
 	return i;
 }
 
-/* init()函数运行在任务0第一次创建的子程序(任务1)中。首先对第一个将要执行的程序(shell)的环境进
- 行初始化，然后以登录shell方式加载该程序并执行 */
+/* init()函数主要完成4件事：
+ *		1. 安装根文件系统
+ *		2. 显示系统信息
+ *		3. 运行系统初始资源配置文件rc中的命令
+ *		4. 执行用户登录shell程序
+*/
 void init(void)
 {
 	int pid, i;
 
-	/* setup()是一个系统调用。用来读取硬盘参数包括分区表信息并加载虚拟盘(如果存在的话)和安装
-	根文件系统设备。*/
 	setup((void *) &drive_info);
 
-	/* 以读写方式打开“/dev/tty1”，它对应终端控制台。因为这是第一次打开文件操作，所以产生的文
-	 件句柄号(文件描述符)肯定是0。 */
 	(void) open("/dev/tty1", O_RDWR, 0);	/* stdin */
-	(void) dup(0);		/* stdout */
-	(void) dup(0);		/* stderr */
+	(void) dup(0);							/* stdout */
+	(void) dup(0);							/* stderr */
 
-	printf("%d buffers = %d bytes buffer space\n\r", NR_BUFFERS,
-		NR_BUFFERS * BLOCK_SIZE);
+	printf("%d buffers = %d bytes buffer space\n\r", NR_BUFFERS, NR_BUFFERS * BLOCK_SIZE);
 	printf("Free mem: %d bytes\n\r", memory_end - main_memory_start);
 
-	// 下面通过fork()用于创建一个子进程(任务 2)。
-	// 首先子进程(任务 2)关闭句柄 0 (stdin)，以只读方式打开 /etc/rc 文件，并使用execve()函
-	// 数将进程自身替换成 /bin/sh 程序，然后执行 /bin/sh 程序。所携带的参数和环境变量分别由
-	// argv_rc 和 envp_rc 数组给出。关闭句柄 0 立即打开 /etc/rc 文件 是为了把 stdin 重定向
-	// 到 /etc/rc 文件。这样 shell 程序 /bin/sh 就可以运行 /etc/rc 中设置的命令了。由于这里
-	// 的 sh 的运行方式是非交互式的，所以执行完rc文件中的命令后立即退出。
-	if (!(pid=fork())) {
+	/* fork出任务2 */
+	if (!(pid = fork())) {
+		/* 将stdin重定向到/etc/rc文件，shell程序会在运行完/etc/rc中设置的命令后退出 */
 		close(0);
 		if (open("/etc/rc", O_RDONLY, 0)) {
 			_exit(1);
@@ -281,23 +275,19 @@ void init(void)
 		_exit(2);
 	}
 
-	/* 下面是父进程(1)执行的语句。wait()等待子进程停止或终止，返回值是相应的子进程的进程号。这
-	 里是父进程在等待子进程(进程 2)退出。&i 是存放返回状态信息的位置。*/
-	if (pid > 0) {
+	if (pid > 0) {	/* init进程等待任务2退出 */
 		while (pid != wait(&i)) {
 			/* nothing */;
 		}
 	}
-	/* 如果执行到这里则说明刚才创建的子进程已经结束了。在下面循环中首先再创建一个子进程。创建，
-	 退出，打印信息，重复循环下去，一直会在这个大循环里。*/
+	/* 系统将始终在这个循环中 */
 	while (1) {
-		/* 如果出错，则显示“初始化创建子程序失败”信息并继续执行 */
 		if ((pid = fork()) < 0) {
 			printf("Fork failed in init\r\n");
 			continue;
 		}
-		/* 新的子进程，关闭句柄(0,1,2)，新创建一个会话并设置进程组号，然后重新打开/dev/tty0作
-		 为stdin，并复制成stdout和stderr。再次执行/bin/sh，这次使用另一套参数和环境变量组。*/
+		/* 新的子进程，关闭句柄（0，1，2），新创建一个会话并设置进程组号，然后重新打开/dev/tty0作
+		 为stdin，并复制成stdout和stderr。以登录方式再次执行/bin/sh */
 		if (!pid) {
 			close(0);close(1);close(2);
 			setsid();
@@ -313,7 +303,7 @@ void init(void)
 			}
 		}
 		printf("\n\rchild %d died with code %04x\n\r", pid, i);
-		sync();				/* 同步操作，刷新缓冲区 */
+		sync();
 	}
 	_exit(0);	/* NOTE! _exit, not exit() */
 	/* _exit和exit都能用于正常终止一个函数。但_exit()直接是一个sys_exit的系统调用，而exit()则

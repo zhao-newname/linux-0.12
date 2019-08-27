@@ -8,7 +8,7 @@
 
 ## 一、实验篇
 
-![experiment.png](src/.pic/experiment.jpg)
+![实验截图](src/.pic/experiment.jpg)
 
 ### 1.1 环境搭建
 

@@ -12,4 +12,6 @@ elif [ "$1" ] && [ "$1" = "-g" ]
 then
 $OSLAB_PATH/bochs/bochs-gdb -q -f $OSLAB_PATH/bochs/bochsrc-gdb.bxrc & \
 gdb -x $OSLAB_PATH/bochs/.gdbrc ../linux-0.12/tools/system
+else
+bochs -q -f $OSLAB_PATH/bochs/bochsrc.bxrc
 fi
