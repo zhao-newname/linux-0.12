@@ -10,12 +10,10 @@
 #include <linux/sched.h>
 #include <linux/kernel.h>
 
-/**
- * 将指定地址(addr)处的一块1024字节内存清零
- * @param[in]	addr	指定起始地址
- */
+/* 将指定地址(addr)处的一块1024字节内存清零 */
 #define clear_block(addr) 												\
-	__asm__("cld\n\t"         											\
+	__asm__(															\
+		"cld\n\t"         												\
 		"rep\n\t" 														\
 		"stosl" 														\
 		::"a" (0), "c" (BLOCK_SIZE / 4), "D" ((long) (addr)))
@@ -38,9 +36,6 @@
 
 /**
  * 复位指定地址开始的第nr位偏移处的位，返回原位值的反码
- * 输入：%0 - eax(返回值)；%1 - eax(0)；%2 - nr，位偏移值；%3 - (addr)，addr的内容
- * btrl指令用于测试并复位位(Bit Test and Reset)。其作用与上面的btsl类似，但是复位指定位。指令
- * setnb用于根据进位标志CF设置操作数（%al）。如果CF = 1，则%al = 0，否则%al = 1。
  * @param[in]	nr		位偏移	
  * @param[in]	addr	指定地址的基地址
  * @retval		返回addr+nr处比特位的原位值的反码
@@ -78,8 +73,7 @@
 	__res;})
 
 /**
- * 释放block块
- * 释放设备dev上数据区中的逻辑块block，并复位指定逻辑块block对应的逻辑块位图位
+ * 释放设备dev上数据区中的逻辑块block
  * @param[in]	dev		设备号
  * @param[in]	block	逻辑块号(盘块号)
  * @retval		成功返回1，失败返回0
@@ -89,47 +83,38 @@ int free_block(int dev, int block)
 	struct super_block * sb;
 	struct buffer_head * bh;
 
-	/* 首先取设备dev上文件系统的超级块信息 */
 	if (!(sb = get_super(dev))) {
 		panic("trying to free block on nonexistent device");
 	}
-	/* 若逻辑块号小于盘上数据区第1个逻辑块号或者大于设备上总逻辑块数 */
 	if (block < sb->s_firstdatazone || block >= sb->s_nzones) {
 		panic("trying to free block not in datazone");
 	}
 	/* 然后从hash表中寻找该块数据 */
 	bh = get_hash_table(dev, block);
 	if (bh) {
-		if (bh->b_count > 1) {	/* 如果引用次数大于1，则调用brelse() */
-			brelse(bh);			/* b_count--后退出，该块还有人用 */
+		if (bh->b_count > 1) {	/* 引用次数大于1，该块还有人用，则调用brelse()后退出 */
+			brelse(bh);
 			return 0;
 		}
-		bh->b_dirt = 0;			/* 否则复位已修改和已更新标志 */
+		bh->b_dirt = 0;
 		bh->b_uptodate = 0;
 		if (bh->b_count) {		/* 若此时b_count为1, 则调用brelse()释放之 */
 			brelse(bh);
 		}
 	}
 	/* 接着复位block在逻辑块位图中的位(置0) */
-	/* 先计算block在数据区开始算起的数据逻辑块号(从1开始计数) */
 	block -= sb->s_firstdatazone - 1 ;
-	/* 由于1个缓冲块有1024字节，即8192位 */
-	/* block/8192 即可计算出指定块block在逻辑位图中的哪个块上 */
-	/* block&8191 可以得到block在逻辑块位图当前块中的位偏移位置 */
-	if (clear_bit(block & 8191, sb->s_zmap[block / 8192]->b_data)) {
+	if (clear_bit(block & 8191, sb->s_zmap[block/8192]->b_data)) { /* 1个缓冲块有1024B，即8192bits */
 		printk("block (%04x:%d) ", dev, block + sb->s_firstdatazone - 1);
 		printk("free_block: bit already cleared\n");
 	}
 	/* 最后置相应逻辑块位图所在缓冲区已修改标志 */
-	sb->s_zmap[block / 8192]->b_dirt = 1;
+	sb->s_zmap[block/8192]->b_dirt = 1;
 	return 1;
 }
 
 /**
- * 向设备申请一个逻辑块
- * 首先取得设备的超级块，并在逻辑块位图中寻找第一个0值比特位(代表空闲逻辑块)。然后设置该比特位，
- * 表示期望得到对应的逻辑块。接着为该逻辑块在缓冲区中取得一块对应缓冲块。最后将该缓冲块清零，并
- * 设置其已更新标志和已修改标志，并返回逻辑块号。
+ * 向设备dev申请一个逻辑块
  * @param[in]	dev		设备号
  * @retval		成功返回逻辑块号，失败返回0。
  */

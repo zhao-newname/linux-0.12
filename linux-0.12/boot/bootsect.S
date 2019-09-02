@@ -87,7 +87,7 @@ SWAP_DEV = 0	; 交换设备使用与引导时同样的设备
 
 entry start 	; 告知链接程序，程序从start标号处开始执行
 start:
-    ; 将自身(bootsect)从当前段位置(即0x7c00)移动到0x90000处，共256字(512字节)。
+;;;;; 1. 将自身(bootsect)从0x7c00移动到0x90000处，共256字(512字节) ;;;;;;;;;;;;;;;;;;
     mov	ax,#BOOTSEG
     mov	ds,ax
     mov	ax,#INITSEG
@@ -96,19 +96,12 @@ start:
     sub	si,si       ; 源地址 ds:si = 0x07c0:0x0000;
     sub	di,di       ; 目标地址 es:di = 0x9000:0x0000;
     rep
-    movw            ; 此处结束后，代码已经成功移动到0x9000，虽然go标识就在jmpi下面，
-                    ; 但代码已完成转移，所以需要通过段间跳转。
-    jmpi go,INITSEG ; 段间跳转(Jump Intersegment)。跳转到INITSEG:go(段地址:段内偏移)处。
+    movw            ; 此处结束后，代码已经成功移动到0x90000
+    jmpi go,INITSEG ; 段间跳转(Jump Intersegment)，跳转到INITSEG:go(段地址:段内偏移)处。
 
-; 从go处开始，CPU在已移动到0x90000处的代码中继续执行。
+;;;;; 2. 从go处开始，CPU在已移动到0x90000处继续执行 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; 以下几行代码设置了几个段寄存器，包括栈寄存器ss和sp。
-; 注意：实际上BIOS把引导扇区加载到0x7c00处并把执行权交给引导程序时，ss=0x00，sp=0xfffe；
-; 这里的push ax的作用是想暂时把段值保留在栈中，然后等下面执行完判断磁道扇区数后再弹出栈，并
-; 给fs和gs赋值，但接下来的2个指令改变了栈段位置，所以需要先恢复到原来的栈段，再执行弹出栈
-; 操作。这更像是一个bug，改正：去掉push ax，把之后的pop ax改成mov ax,cs 。
-; TODO: 不改也没问题，fs，gs段寄存器好像没有使用到的地方。
-
 go:	mov	ax,cs
     mov	dx,#0xfef4	! arbitrary value >>512 - disk parm size
                     ; 栈指针要远大于512字节偏移(即0x90200)处都可以；一般setup程序大概占用4个
@@ -149,32 +142,27 @@ go:	mov	ax,cs
  * fs = 0, gs = 参数表所在段值。
  */
 
-; BIOS 设置的中断0x1e的中断向量值是软驱参数表地址。该向量值位于内存 0x1e * 4 = 0x78 处。
-; 这段代码首先从内存 0x0000:0x0078 处复制原软驱参数表到0x9000:0xfef4处，然后修改表中的每
-; 磁道最大扇区数为 18。
+; BIOS设置的中断0x1e的中断向量值是软驱参数表地址。该向量值位于内存0x1e*4=0x78处。这段代码首先从内
+; 存0x0000:0x0078处复制原软驱参数表到0x9000:0xfef4处，然后修改表中的每磁道最大扇区数为18。
 
-    push	#0			; 置段寄存器 fs = 0
+    push	#0
     pop		fs 			; fs:bx 指向存有软驱参数表地址处(指针的指针)。
     mov	bx,	#0x78		; fs:bx is parameter table address
 
-; seg fs只影响接下来的一条语句，表示下一条语句的操作数在fs段寄存器所指的段中。这里即把
-; fs:bx 所指内存位置处的表地址放到 gs:si 中作为源地址，寄存器对 es:di = 0x9000:0xfef4
-; 处作为目的地址。
-
-    seg fs
+    seg fs              ; seg fs只影响接下来的一条语句，表示下一条语句的操作数在fs段寄存器所指的段中
     lgs	si,(bx)			! gs:si is source ;将fs:bx赋值给gs:si 0x0000:0x0078
     mov	di,dx			! es:di is destination ;0x9000:0xfef4
     mov	cx,#6			! copy 12 bytes
-    cld 				; 清方向标志。复制时指针递增。
+    cld 				; 清方向标志
 
-    rep 				; 复制12字节的软驱参数表到 0x9000:0xfef4 处。
+    rep 				; 复制12字节的软驱参数表到0x9000:0xfef4处。
     seg gs
     movw
 
-    mov	di,dx			; es:di 指向新表，然后修改表中偏移4处的最大扇区数。
+    mov	di,dx			; es:di指向新表，然后修改表中偏移4处的最大扇区数。
     movb 4(di),*18		! patch sector count
 
-    seg fs 				; 让中断向量 0x1e 的值指向新表。
+    seg fs 				; 让中断向量0x1e的值指向新表。
     mov	(bx),di
     seg fs
     mov	2(bx),es
@@ -184,21 +172,23 @@ go:	mov	ax,cs
     mov	gs,ax
 
     xor	ah,ah			! reset FDC ; 复位软盘控制器，让其采用新参数。
-    xor	dl,dl 			! dl = 0 ; 第1个软驱
+    xor	dl,dl 			! dl = 0    ; 第1个软驱
     int 0x13
 
 ! load the setup-sectors directly after the bootblock.
 ! Note that 'es' is already set up.
-; 在 bootsect 程序块后紧跟着加载 setup 模块的代码数据。
+; 在bootsect程序块后紧跟着加载setup模块的代码数据。
 ; 在移动代码时，es的值已被设置好。
 ;
-; 利用BIOS中断INT 0x13 将setup模块从磁盘第2个扇区开始，读到 0x90200 开始处，共读4个扇区。
-; 如果读出错，显示磁盘上出错扇区位置，则复位驱动器，并重试，没有退路。INT 0x13 的使用方法如下：
+; 利用BIOS中断INT 0x13将setup模块从磁盘第2个扇区开始，读到0x90200开始处，共读4个扇区。
+; 如果读出错，显示磁盘上出错扇区位置，则复位驱动器，并重试，没有退路。INT 0x13的使用方法如下：
 ; 读扇区：
 ; ah = 0x02 - 读磁盘扇区到内存； al = 需要读出的扇区数量；
 ; ch = 磁道(柱面)号的低8位； cl = 开始扇区(0-5)，磁道号高2位(6-7)；
 ; dh = 磁头号； dl = 驱动器号（如果是硬盘则要置位7）；
 ; es:bx 指向数据缓冲区； 如果出错则 CF 标志置位，并且ah中是出错码。
+
+;;;;; 3. 加载setup模块 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 load_setup:
     xor	dx, dx					! drive 0, head 0
     mov	cx,#0x0002				! sector 2, track 0
@@ -208,9 +198,9 @@ load_setup:
     jnc	ok_load_setup 			! ok - continue ;jnc - jump not cf
 
     push	ax			! dump error code	;显示出错信息。出错码入栈。
-    call	print_nl 	; 屏幕光标回车
+    call	print_nl
     mov	bp, sp 			; ss:bp 指向欲显示的字(word)
-    call	print_hex	; 显示十六进制值
+    call	print_hex
     pop	ax
 
     xor	dl, dl			! reset FDC ;复位磁盘控制器，重试。
@@ -260,13 +250,13 @@ ok_load_setup:
 ! ok, we've written the message, now
 
 ! we want to load the system (at 0x10000)
-; 现在开始将system模块加载到0x10000(64K)处。
+;;;;; 4. 将system模块加载到0x10000(64K)处 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
     mov	ax,#SYSSEG
     mov	es,ax			! segment of 0x010000
     call	read_it 	; 读磁盘上 system 模块，es 为输入参数。
     call	kill_motor 	; 关闭驱动器马达，这样就可以知道驱动器的状态了。
-    call	print_nl	; 光标回车换行，我感觉可以放在加载 system 模块前的 int 0x10 指令后。
+    call	print_nl
 
 ! After that we check which root-device to use. If the device is
 ! defined (!= 0), nothing is done and the given device is used.
@@ -302,8 +292,8 @@ root_defined:			; 将检查过的设备号保存到 root_dev 中。
 ! after that (everyting loaded), we jump to
 ! the setup-routine loaded directly after
 ! the bootblock:
-; 到此，所有程序都加载完毕，我们就跳转到被加载在 bootsect 后面的 setup 程序去。
 
+;;;;; 5. 到此，所有程序都加载完毕，我们就跳转到setup程序去 ;;;;;;;;;;;;;;;;;;;;;;;;;
     jmpi	0,SETUPSEG
 
 ;;;;;;;; bootsect.S 程序到此就结束了。

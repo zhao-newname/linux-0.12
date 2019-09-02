@@ -71,7 +71,7 @@ int file_read(struct m_inode * inode, struct file * filp, char * buf, int count)
 int file_write(struct m_inode * inode, struct file * filp, char * buf, int count)
 {
 	off_t pos;
-	int block,c;
+	int block, c;
 	struct buffer_head * bh;
 	char * p;
 	int i = 0;

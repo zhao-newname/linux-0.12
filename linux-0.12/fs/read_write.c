@@ -12,17 +12,15 @@
 #include <linux/sched.h>
 #include <asm/segment.h>
 
-#include <unistd.h>		/*(新增) import SEEK_SET,SEEK_CUR,SEEK_END */
+#include <unistd.h>		/* import SEEK_SET,SEEK_CUR,SEEK_END */
 
 extern int rw_char(int rw,int dev, char * buf, int count, off_t * pos);
 extern int read_pipe(struct m_inode * inode, char * buf, int count);
 extern int write_pipe(struct m_inode * inode, char * buf, int count);
 extern int block_read(int dev, off_t * pos, char * buf, int count);
 extern int block_write(int dev, off_t * pos, char * buf, int count);
-extern int file_read(struct m_inode * inode, struct file * filp,
-		char * buf, int count);
-extern int file_write(struct m_inode * inode, struct file * filp,
-		char * buf, int count);
+extern int file_read(struct m_inode * inode, struct file * filp, char * buf, int count);
+extern int file_write(struct m_inode * inode, struct file * filp, char * buf, int count);
 
 /**
  * 重定位文件读写指针 系统调用
@@ -70,6 +68,8 @@ int sys_lseek(unsigned int fd, off_t offset, int origin)
 	return file->f_pos;
 }
 
+/* TODO: 为什么只对读写管道操作判断是否有权限？ */
+
 /**
  * 读文件 系统调用
  * @param[in]	fd		文件句柄
@@ -91,13 +91,13 @@ int sys_read(unsigned int fd, char * buf, int count)
 	verify_area(buf, count); 		/* 验证存放数据的缓冲区内存限制 */
 	/* 根据文件类型执行相应的读操作 */
 	inode = file->f_inode;
-	if (inode->i_pipe) { 			/* 管道文件的读操作 */
+	if (inode->i_pipe) { 			/* 管道文件 */
 		return (file->f_mode & 1) ? read_pipe(inode, buf, count) : -EIO;
 	}
-	if (S_ISCHR(inode->i_mode)) { 	/* 字符设备的读操作 */
+	if (S_ISCHR(inode->i_mode)) { 	/* 字符设备 */
 		return rw_char(READ, inode->i_zone[0], buf, count, &file->f_pos);
 	}
-	if (S_ISBLK(inode->i_mode)) { 	/* 块设备的读操作 */
+	if (S_ISBLK(inode->i_mode)) { 	/* 块设备 */
 		return block_read(inode->i_zone[0], &file->f_pos, buf, count);
 	}
 	/* 目录文件或常规文件 */
@@ -137,17 +137,17 @@ int sys_write(unsigned int fd, char * buf, int count)
 
 	/* 根据文件类型执行相应的写操作 */
 	inode = file->f_inode;
-	if (inode->i_pipe) { 			/* 管道的写操作 */
+	if (inode->i_pipe) { 			/* 管道 */
 		/* file->f_mode & 2 即是否有写的权限 */
 		return (file->f_mode & 2) ? write_pipe(inode, buf, count) : -EIO;
 	}
-	if (S_ISCHR(inode->i_mode)) { 	/* 字符设备的写操作 */
+	if (S_ISCHR(inode->i_mode)) { 	/* 字符设备 */
 		return rw_char(WRITE, inode->i_zone[0], buf, count, &file->f_pos);
 	}
-	if (S_ISBLK(inode->i_mode)) { 	/* 块设备的写操作 */
+	if (S_ISBLK(inode->i_mode)) { 	/* 块设备 */
 		return block_write(inode->i_zone[0], &file->f_pos, buf, count);
 	}
-	if (S_ISREG(inode->i_mode)) { 	/* 文件的写操作 */
+	if (S_ISREG(inode->i_mode)) { 	/* 文件 */
 		return file_write(inode, file, buf, count);
 	}
 	/* 如果执行到这，说明无法判断文件类型 */
