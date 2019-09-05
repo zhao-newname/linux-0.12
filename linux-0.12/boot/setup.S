@@ -166,7 +166,7 @@ do_move:
 	jmp	do_move
 
 ! then we load the segment descriptors
-;;;;; 此后，我们加载段描述符（临时gdt，ldt表） ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;; 3. 此后，我们加载段描述符（临时gdt，ldt表） ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 end_move:
 	mov	ax,#SETUPSEG	! right, forgot this at first. didn't work :-)
@@ -243,7 +243,7 @@ end_move:
 ; Word)，也称控制寄存器CR0，将其位0置1将导致CPU工作在保护模式。
 ; 注：在Intel公司的手册上建议80386或以上CPU应该使用指令“mov cr0,ax”切换到保护模式。
 
-;;;;; 3.开启保护模式 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;; 4. 开启保护模式 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	mov	ax,#0x0001	! protected mode (PE) bit
 	lmsw	ax		! This is it!				; 将CR0的位0置1开启保护模式
 	jmpi	0,8		! jmp offset 0 of segment 8 (cs)
@@ -632,7 +632,7 @@ docr:	push	ax
 gdt:
 	.word	0,0,0,0		! dummy	;第1个描述符，不用
 
-	; 在GDT表 这里的偏移量是0x08。它是内核代码段选择符的值。
+	; 在GDT表的偏移量是0x08。它是内核代码段选择符的值。
 	.word	0x07FF		! 8Mb - limit=2047 (2048*4096=8Mb)
 	.word	0x0000		! base address=0
 	.word	0x9A00		! code read/exec		; 代码段为只读，可执行
