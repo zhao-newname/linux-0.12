@@ -12,17 +12,17 @@
 ! for buffer-blocks.
 !
 ;  setup.s负责从BIOS中获取系统数据，并将这些数据放到系统内存的适当地方。
-; 此时setup.s和system 已经由bootsect引导块加载到内存中。
+; 此时setup.s和system已经由bootsect引导块加载到内存中。
 ;
 ; 这段代码询问bios有关内存/磁盘/其它参数，并将这些参数放到一个“安全的”地
-; 方：0x90000 - 0x901FF，也即原来 bootsect 代码块曾经在的地方，然后在被缓冲
-; 块覆盖掉之前由保护模式的 system 读取。
+; 方：0x90000 - 0x901FF，也即原来bootsect代码块曾经在的地方，然后在被缓冲
+; 块覆盖掉之前由保护模式的system读取。
 !
 
 ! NOTE! These had better be the same as in bootsect.s!
-; 以下这些参数最好和bootsect.s 中的相同！
+; 以下这些参数最好和bootsect.s中的相同！
 #include <linux/config.h>
-; config.h 中定义了 DEF_INITSEG = 0x9000，DEF_SYSSEG = 0x1000，DEF_SETUPSEG = 0x9020。
+; config.h中定义了DEF_INITSEG = 0x9000，DEF_SYSSEG = 0x1000，DEF_SETUPSEG = 0x9020。
 INITSEG  = DEF_INITSEG	! we move boot here - out of the way
 SYSSEG   = DEF_SYSSEG	! system loaded at 0x10000 (65536).
 SETUPSEG = DEF_SETUPSEG	! this is the current segment
@@ -49,6 +49,7 @@ start:
 	mov	ds,ax
 
 ;;;;; 1.获取系统初始化所需要的参数 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; 内存地址	 ; 字节 ; 内容				 ;
 ; 0x90000	; 2	;   光标位置			;
 ; 0x90002	; 2	;	扩展内存大小 		 ;
 ; 0x90004	; 2	;	显示页面			;
@@ -60,7 +61,7 @@ start:
 ; 0x9000C	; 2	;	显示卡特性参数		 ;
 ; 0x9000E	; 1	;	屏幕当前行值		 ;
 ; 0x9000F	; 1	;	屏幕当前列值		 ;
-; ...
+; ...								   ;
 ; 0x90080	; 16;	第1个硬盘的参数表	  ;
 ; 0x90090	; 16;	第2个硬盘的参数表	  ;
 ; 0x901FC	; 2 ;	根文件系统所在的设备号（bootsec.s中设置）;
@@ -73,39 +74,34 @@ start:
 
 ! check for EGA/VGA and some config parameters 
 ;;; 检查EGA/VGA和一些配置参数
-
 	mov	ah,#0x12
 	mov	bl,#0x10
 	int	0x10
 	mov	[8],ax
 	mov	[10],bx
 	mov	[12],cx
-	; 检测屏幕当前行列值。若显示卡是VGA卡，则请求用户选择显示行列值，并保存到0x9000E处
+	; 检测屏幕当前行列值。若显示卡是VGA卡，则请求用户选择显示行列值
 	mov	ax,#0x5019  ; 预设行列值(ah = 80列，al = 25行)
 	cmp	bl,#0x10 
 	je	novga
 	call	chsvga
 novga:	
-	mov	[14],ax
-	
+	mov	[14],ax	
 ;;; 获取光标位置
 	mov	ah,#0x03	! read cursor pos
 	xor	bh,bh
 	int	0x10		! save it in known place, con_init fetches
 	mov	[0],dx		! it from 0x90000.
 	
-! Get video-card data: ; 取显示卡当前显示模式
-
+! Get video-card data:
+;;; 取显示卡当前显示模式
 	mov	ah,#0x0f
 	int	0x10
 	mov	[4],bx		! bh = display page
 	mov	[6],ax		! al = video mode, ah = window width
 
+;;; 复制两个硬盘的参数表：
 ! Get hd0 data
-;;; 下面两段程序分别复制BIOS有关两个硬盘的参数表：
-; 取第1个硬盘的信息(复制硬盘参数表)
-	; 第1个硬盘参数表的首地址竟然是中断向量0x41的向量值！而第2个硬盘参数表紧接第1个表的后面，
-	; 中断向量0x46的向量值也指向这第2个硬盘的参数表首址。表的长度是16个字节(0x10)。
 	mov	ax,#0x0000
 	mov	ds,ax
 	lds	si,[4*0x41]			; 取中断向量0x41的值，即hd0参数表的地址--ds:si
@@ -164,13 +160,13 @@ do_move:
 	mov	ds,ax			! source segment
 	sub	di,di
 	sub	si,si
-	mov cx,#0x8000 		; 移动 0x8000个字
+	mov cx,#0x8000 		; 移动0x8000个字
 	rep
 	movsw
 	jmp	do_move
 
 ! then we load the segment descriptors
-;;;;; 此后，我们加载段描述符 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;; 此后，我们加载段描述符（临时gdt，ldt表） ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 end_move:
 	mov	ax,#SETUPSEG	! right, forgot this at first. didn't work :-)
@@ -180,15 +176,14 @@ end_move:
 
 ! that was painless, now we enable A20
 ;;;;; 为了能访问1MB以上的内存，需要开启A20地址线 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	; 是否真正开启了A20地址线，我们需要在进入保护模式后测试一下。这个工作在head.S中完成。
-	call	empty_8042 	; 测试8042状态寄存器，等待输入缓冲器空
-						; 只有当缓冲器空时才能对其执行写命令。
+
+	call	empty_8042
 	mov	al,#0xD1		! command write ; 0xD1 - 写数据到P2口
 	out	#0x64,al 		; 位1用于A20线的选通
 	call	empty_8042
 	mov	al,#0xDF		! A20 on
 	out	#0x60,al
-	call	empty_8042  ; 若输入缓冲器空，则表示A20线已经选通。
+	call	empty_8042
 
 ! well, that went ok, I hope. Now we have to reprogram the interrupts :-(
 ! we put them right after the intel-reserved hardware interrupts, at
@@ -245,12 +240,12 @@ end_move:
 ; 程序员所做的事。
 ; 进入保护模式时，我们只需要简单地跳转到绝对地址0x00000处就好。 
 ; 这里设置进入32位保护模式运行。首先加载机器状态字(lmsw - Load Machine Status 
-; Word)，也称控制寄存器CR0，将其比特位0置1将导致CPU工作在保护模式。
+; Word)，也称控制寄存器CR0，将其位0置1将导致CPU工作在保护模式。
 ; 注：在Intel公司的手册上建议80386或以上CPU应该使用指令“mov cr0,ax”切换到保护模式。
 
 ;;;;; 3.开启保护模式 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	mov	ax,#0x0001	! protected mode (PE) bit 	; 保护模式位
-	lmsw	ax		! This is it!				; 通过以上2行指令，已经开启了保护模式
+	mov	ax,#0x0001	! protected mode (PE) bit
+	lmsw	ax		! This is it!				; 将CR0的位0置1开启保护模式
 	jmpi	0,8		! jmp offset 0 of segment 8 (cs)
 	; 我们已经将system模块移动到0x00000开始的地方，所以这里的偏移地址是0。
 	; 这里的段值8已经是保护模式下的段选择符。

@@ -67,19 +67,6 @@ ENDSEG   = SYSSEG + SYSSIZE		! where to stop loading
 ! ROOT_DEV & SWAP_DEV are now written by "build".
 ; 根文件系统设备号ROOT_DEV和交换设备号SWAP_DEV现在由tools目录下的build程序写入。
 
-; 设备号具体值的含义如下：
-; dev_no(设备号) = major(主设备号)<<8 + minor(次设备号)
-; （主设备号：1-内存,2-磁盘,3-硬盘,4-ttyx,5-tty,6-并行口,7-非命名管道）
-; 0x300 - /dev/hd0 - 代表整个第1个硬盘；
-; 0x301 - /dev/hd1 - 第1个盘的第1个分区；
-; …
-; 0x304 - /dev/hd4 - 第1个盘的第4个分区；
-; 0x305 - /dev/hd5 - 代表整个第2个硬盘盘；
-; 0x306 - /dev/hd6 - 第2个盘的第1个分区；
-; …
-; 0x309 - /dev/hd9 - 第2个盘的第4个分区；
-; 从Linux内核0.95版后已经使用与现在相同的命名方法了。
-
 ROOT_DEV = 0
 SWAP_DEV = 0
 
@@ -140,27 +127,29 @@ go:	mov	ax,cs
  * fs = 0, gs = 参数表所在段值。
  */
 
+
+;;; 修改软驱参数表
 ; BIOS设置的中断0x1e的中断向量值是软驱参数表地址。该向量值位于内存0x1e*4=0x78处。这段代码首先从内
 ; 存0x0000:0x0078处复制原软驱参数表到0x9000:0xfef4处，然后修改表中的每磁道最大扇区数为18。
 
     push	#0
-    pop		fs 			; fs:bx 指向存有软驱参数表地址处(指针的指针)。
+    pop		fs
     mov	bx,	#0x78		; fs:bx is parameter table address
 
-    seg fs              ; seg fs只影响接下来的一条语句，表示下一条语句的操作数在fs段寄存器所指的段中
-    lgs	si,(bx)			! gs:si is source ;将fs:bx赋值给gs:si 0x0000:0x0078
-    mov	di,dx			! es:di is destination ;0x9000:0xfef4
+    seg fs              ; seg fs只影响接下来的一条语句，表示下一条语句的操作数在fs所指的段中
+    lgs	si,(bx)			! gs:si is source       ; 将fs:bx赋值给gs:si 0x0000:0x0078
+    mov	di,dx			! es:di is destination  ;                   0x9000:0xfef4
     mov	cx,#6			! copy 12 bytes
-    cld 				; 清方向标志
+    cld
 
-    rep 				; 复制12字节的软驱参数表到0x9000:0xfef4处。
+    rep
     seg gs
     movw
 
-    mov	di,dx			; es:di指向新表，然后修改表中偏移4处的最大扇区数。
-    movb 4(di),*18		! patch sector count
+    mov	di,dx
+    movb 4(di),*18		! patch sector count ;修改新表的最大扇区数为18
 
-    seg fs 				; 让中断向量0x1e的值指向新表。
+    seg fs 				; 让中断向量0x1e的值指向新表
     mov	(bx),di
     seg fs
     mov	2(bx),es
@@ -215,18 +204,15 @@ ok_load_setup:
     mov	es,ax           ; 因为上面取磁盘参数中断改了es的值，这里需要改回来
 
 ! Print some inane message
-; 在显示一些信息('Loading' + 回车 + 换行，共 9 个字符)。
+; 在显示一些信息('Loading\r\n'，共9个字符)。
     mov	ah,#0x03        ! read cursor pos 	; 读光标位置
     xor	bh,bh           ; bh 页号
     int	0x10
 
-    mov	cx,#9           ; cx 显示的字符串个数
+    mov	cx,#9
     mov	bx,#0x0007      ! page 0, attribute 7 (normal)
-                        ; bh = 页号，bl = 字符属性
     mov	bp,#msg1
     mov	ax,#0x1301      ! write string, move cursor
-                        ; ah = 0x13 - 显示字符串。al = 放置光标的方式及规定属性。
-                        ; 0x01 - 表示使用bl中的属性值，光标停在字符串末尾
     int	0x10
 ! ok, we've written the message, now
 
@@ -235,7 +221,7 @@ ok_load_setup:
 
     mov	ax,#SYSSEG
     mov	es,ax			! segment of 0x010000
-    call	read_it 	; 读磁盘上system模块，es为输入参数。
+    call	read_it 	; 读磁盘上system模块
     call	kill_motor 	; 关闭驱动器马达，这样就可以知道驱动器的状态了。
     call	print_nl
 
@@ -250,8 +236,8 @@ ok_load_setup:
 ; 在Linux中软驱的主设备号是2，次设备号 = type * 4 + nr，
 ;       nr 为 0-3 分别对应软驱A、B、C 或D；
 ;       type是软驱的类型（2->1.2M 或 7->1.44M 等）。
-; 因为7*4+0 = 28，所以 /dev/PS0 (2,28)指的是1.44M A驱动器,其设备号是 0x021c
-; 同理 /dev/at0 (2,8)指的是1.2M A驱动器，其设备号是0x0208。
+; 因为7*4+0=28，所以/dev/PS0(2,28)指的是1.44M A驱动器,其设备号是 0x021c
+; 同理/dev/at0(2,8)指的是1.2M A驱动器，其设备号是0x0208。
 
     seg cs
     mov	ax,root_dev
@@ -265,9 +251,9 @@ ok_load_setup:
     mov	ax,#0x021c      ! /dev/PS0 - 1.44Mb
     cmp	bx,#18
     je	root_defined
-undef_root:             ; 都不等于的情况下则进入死循环
+undef_root:
     jmp undef_root
-root_defined:			; 将检查过的设备号保存到root_dev中。
+root_defined:
     seg cs
     mov	root_dev,ax
 
@@ -291,9 +277,7 @@ root_defined:			; 将检查过的设备号保存到root_dev中。
 !
 ! in:	es - starting address segment (normally 0x1000)
 !
-; 该子程序将系统模块加载到内存地址 0x10000 处，并确定没有跨越 64KB 的内存边界。我们试图尽快
-; 地进行加载，只要可能，就每次加载整条磁道的数据。
-; 输入：es – 开始内存地址段值（通常是 0x1000）
+; 该子程序将系统模块加载到内存地址0x10000处，并确定没有跨越64KB的内存边界。
 sread:	.word 1+SETUPLEN	! sectors read of current track
                             ; bootsect和setup程序所占的扇区数
 head:	.word 0				! current head  ;当前磁头号
@@ -327,7 +311,7 @@ ok1_read:
     mov cx,ax
     shl cx,#9 		; cx = cx * 512 字节。
     add cx,bx 		; cx + bx = 此次读操作后，段内共读入的字节数(偏移地址)。
-    jnc ok2_read	; 若没有超过 64KB 字节，则跳转至 ok2_read 处执行。
+    jnc ok2_read	; 若没有超过64KB字节，则跳转至ok2_read处执行。
     je ok2_read
     ; 若加上此次将读磁道上所有未读扇区时会超过64KB，则计算此时最多能读入的
     ; 字节数(64KB – 段内读偏移位置)，再转换成需要读取的扇区数。
@@ -372,7 +356,7 @@ read_track:
     int	0x10
     popa
 
-; 开始进行磁道扇区读操作。
+; 开始进行磁道扇区读操作
     mov dx,track 	; 当前磁道号
     mov cx,sread 	; 当前磁道上已读扇区
     inc cx
@@ -389,11 +373,11 @@ read_track:
 
     int 0x13
     jc bad_rt
-    add	sp, #8      ; 若没有出错，丢弃出错情况保存的信息。
+    add	sp, #8      ; 若没有出错，丢弃为出错情况保存的信息。
     popa
     ret
 
-; 读磁盘操作出错。则先显示出错信息，然后执行驱动复位操作(磁盘中断功能号0)，再跳转到read_track处重试。
+; 读磁盘操作出错
 bad_rt:
     push	ax          ; save error code
     call	print_all   ; ah = error, al = read
@@ -402,7 +386,7 @@ bad_rt:
     xor dl,dl
     int 0x13
 
-    add	sp, #10         ; 丢弃为出错情况保存的信息 ax,ax,bx,cx,dx
+    add	sp, #10         ; 若没有出错，丢弃为出错情况保存的信息 ax,ax,bx,cx,dx
     popa
     jmp read_track
 
@@ -427,9 +411,8 @@ print_loop:
     push	cx          ! save count left
     call	print_nl    ! nl for readability
     jae		no_reg      ! see if register name is needed
-                        ; 若FLAGS的标志CF=0则不显示寄存器名，于是跳转
 
-    ; 下面几行用于显示寄存器号,例如："AX:", 0x45 - E
+    ; 下面几行用于显示寄存器号，例如："AX:", 0x45 - E
     mov	ax, #0xe05 + 0x41 - 1 ; ah = 功能号(0x0e)；al = 字符(0x05 + 0x41 - 1)
     sub	al, cl
     int	0x10
@@ -439,7 +422,7 @@ print_loop:
 
     mov	al, #0x3a       ! :
     int	0x10
-; 显示寄存器bp所指栈中的内容。
+; 显示寄存器bp所指栈中的内容
 no_reg:
     add	bp, #2          ! next register
     call	print_hex   ! print it
@@ -464,7 +447,6 @@ print_nl:
  *	子程序print_hex用于调试目的.它使用十六进制在屏幕上显示出ss:bp指向的字
  *
  */
-; 调用BIOS中断0x10，以电传方式和4个十六进制数显示ss:bp指向的字
 print_hex:
     mov	cx, #4      ! 4 hex digits
     mov	dx, (bp)    ! load word into dx
@@ -482,7 +464,7 @@ print_digit:
 
 good_digit:
     int	0x10
-    loop	print_digit     ; cx--。如cx>0 则显示下一个值
+    loop	print_digit
     ret
 
 
@@ -494,9 +476,9 @@ good_digit:
 ; 这个子程序用于关闭软驱的马达，这样我们进入内核后它处于已知状态，以后也就无须担心它了。
 kill_motor:
     push dx
-    mov dx,#0x3f2   ; 软驱控制卡的数字输出寄存器端口。
+    mov dx,#0x3f2
     xor al, al
-    outb            ; 将al中的值输出到dx指定的端口去。
+    outb
     pop dx
     ret
 
@@ -508,15 +490,13 @@ msg1:
     .ascii "Loading"
 
 .org 506
-; 表示下面语句从地址506(0x1FC)开始，所以swap_dev在启动扇区的第506开
-; 始的2个字节中，root_dev在启动扇区的第508开始的2个字节中。
+; swap_dev在第506开始的2个字节中，root_dev在第508开始的2个字节中
 swap_dev:
     .word SWAP_DEV
 root_dev:
     .word ROOT_DEV
 
-; 下面是启动盘具有有效引导扇区的标志。仅供BIOS中的程序加载引导扇区时识别使用.它必须位于引
-; 导扇区的最后两个字节中。
+; 下面2个字节是有效引导扇区的标志（必须位于引导扇区的最后两个字节中）
 boot_flag:
     .word 0xAA55
 

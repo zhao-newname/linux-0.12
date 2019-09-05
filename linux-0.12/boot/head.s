@@ -26,8 +26,8 @@ pg_dir:
 # head.s主要做了四件事：
 # 1. 将系统堆栈放置在stack_start指向的数据区（之后，该栈就被用作任务0和任务1共同使用的用户栈）
 # 2. 重新加载了新的中断描述符表和全局段描述符表
-# 4. 初始化页目录表和4个内核专属的页表
-# 3. 跳转到init/main.c中的main运行
+# 3. 初始化页目录表和4个内核专属的页表
+# 4. 跳转到init/main.c中的main运行
 .globl startup_32
 startup_32:
     movl $0x10, %eax
@@ -37,8 +37,8 @@ startup_32:
     mov %ax, %gs
     lss stack_start, %esp   # 设置系统堆栈
 
-    call setup_idt          # 调用设置中断描述符表子程序
-    call setup_gdt          # 调用设置全局描述符表子程序
+    call setup_idt          # 设置中断描述符表
+    call setup_gdt          # 设置全局描述符表
     
     # 因为修改了gdt（段描述符中的段限长8MB改成了16MB），所以需要重新装载所有的段寄存器。CS代码段寄存器
     # 已经在setup_gdt中重新加载过了。
@@ -51,7 +51,7 @@ startup_32:
 
     # 下面代码用于测试A20地址线是否已经开启
     # 采用的方法是向内存地址0x000000处写入任意一个数值，然后看内存地址0x100000(1M)处是否也是这个数值。
-    # 如果一直相同的话，就一直比较下去，即死循环。表示地址A20线没有选通，结果内核就不能使用1MB以上内存。
+    # 如果一直相同的话（表示地址A20线没有选通），就一直比较下去，即死循环。
     xorl %eax, %eax
 1:	incl %eax               # check that A20 really IS enabled
     movl %eax, 0x000000     # loop forever if it isn't
@@ -71,9 +71,9 @@ startup_32:
  # 上面原注释中提到的486CPU中CR0控制器的位16是写保护标志WP，用于禁止超级用户级的程序向一般用户只读页面中
  # 进行写操作。该标志主要用于操作系统在创建新进程时实现写时复制方法。
 
- # 下面这段程序用于检查数学协处理器芯片是否存在.方法是修改控制寄存器CR0,在假设存在协处理器的情况下执行一个
- # 协处理器指令,如果出错的话则说明协处理器芯片不存在,需要设置CR0中的协处理器仿真位EM(位2),并复位协处理器
- # 存在标志MP(位1).
+ # 下面这段程序用于检查数学协处理器芯片是否存在。
+ # 方法是修改控制寄存器CR0，在假设存在协处理器的情况下执行一个协处理器指令，如果出错的话则说明协处理器
+ # 芯片不存在，需要设置CR0中的协处理器仿真位EM(位2)，并复位协处理器存在标志MP(位1)。
 
     movl %cr0, %eax						# check math chip
     andl $0x80000011, %eax				# Save PG,PE,ET
@@ -90,27 +90,26 @@ startup_32:
  * 我们依赖于ET标志的正确性来检测287/387存在与否.
  *
  */
-# 下面fninit和fstsw是数学协处理器(80287/80387)的指令.
-# fninit向协处理器发出初始化命令,它会把协处理器置于一个末受以前操作影响的已和状态,设置其控制字为默认值，
+# fninit向协处理器发出初始化命令，它会把协处理器置于一个末受以前操作影响的已和状态，设置其控制字为默认值，
 # 清除状态字和所有浮点栈式寄存器。非等待形式的这条指令(fninit)还会让协处理器终止执行当前正在执行的任何
-# 先前的算术操作。fstsw指令取协处理器的状态字。如果系统中存在协处理器的话,那么在执行了fninit指令后其状
-# 态字低字节肯定为0.
+# 先前的算术操作。
+# fstsw指令取协处理器的状态字。
+# 如果系统中存在协处理器的话，那么在执行了fninit指令后其状态字低字节肯定为0
 
 check_x87:
-    fninit								# 向协处理器发出初始化命令.
-    fstsw %ax							# 取协处理器状态字到ax寄存器中.
-    cmpb $0, %al						# 初始化状态字应该为0,否则说明协处理器不存在.
+    fninit								# 向协处理器发出初始化命令
+    fstsw %ax							# 取协处理器状态字到ax寄存器中
+    cmpb $0, %al						# 初始化状态字应该为0,否则说明协处理器不存在
     je 1f								/* no coprocessor: have to set bits */
-    movl %cr0, %eax						# 如果存在则向前跳转到标号1处,否则改写cr0.
+                                        # 如果存在则向前跳转到标号1处，否则改写cr0。
+    movl %cr0, %eax
     xorl $6, %eax						/* reset MP, set EM */
     movl %eax, %cr0
     ret
 
-
 .align 4 # 按4字节方式对齐内存地址， 为了提高32位CPU访问内存中代码或数据的速度和效率
-
-    # 两个字节值是80287协处理器指令fsetpm的机器码。其作用是把80287设置为保护模式。80387无需该指令，
-    # 并且将会把该指令看作是空操作
+    # 两个字节值是80287协处理器指令fsetpm的机器码。其作用是把80287设置为保护模式。
+    # 80387无需该指令，并且将会把该指令看作是空操作
 1:	.byte 0xDB,0xE4		/* fsetpm for 287, ignored by 387 */	# 287协处理器码
     ret
 
@@ -134,21 +133,20 @@ check_x87:
 
 setup_idt:
     lea ignore_int, %edx
-    movl $0x00080000, %eax		# 将选择符0x0008置入eax的高16位中.
-    movw %dx, %ax				/* selector = 0x0008 = cs */			
-                                # 偏移值的低16位置入eax的低16位中.此时eax含有门描述符低4字节的值。
+    movl $0x00080000, %eax		# 将选择符0x0008置入eax的高16位中
+    movw %dx, %ax				/* selector = 0x0008 = cs */
     movw $0x8E00, %dx			/* interrupt gate - dpl=0, present */	
-                                # 此时edx含有门描述符高4字节的值.
+                                # 此时edx含有门描述符高4字节的值
 
-    lea idt, %edi				# idt是中断描述符表的地址.
+    lea idt, %edi				# idt是中断描述符表的地址
     mov $256, %ecx
 rp_sidt:
-    movl %eax, (%edi)			# 将哑中断门描述符存入表中.
+    movl %eax, (%edi)			# 将哑中断门描述符存入表中
     movl %edx, 4(%edi)
-    addl $8, %edi				# edi指向表中下一项.
+    addl $8, %edi				# edi指向表中下一项
     dec %ecx
     jne rp_sidt
-    lidt idt_descr				# 加载中断描述符表寄存器值.
+    lidt idt_descr				# 加载中断描述符表寄存器值
     ret
 
 /*
@@ -198,7 +196,7 @@ pg3:
  */
 /*
  * 当DMA(直接存储器访问)不能访问缓冲块时，下面的tmp_floppy_area内存块就可供软盘驱动程序使用。
- * 其地址需要对齐调整，这样就不会跨越64KB边界.
+ * 其地址需要对齐调整，这样就不会跨越64KB边界
  */
 
 tmp_floppy_area:
@@ -208,7 +206,7 @@ tmp_floppy_area:
 # 前面3个入栈0值应该分别表示envp，argv指针和argc的值（main()没有用到）
 # pushl $L6    压入返回地址
 # pushl $main  压入main()函数的入口地址。
-# 当head.s最后执行ret指令时就会弹出main()的地址，并把控制权转移到init/main.c程序中。
+# 当head.s最后执行ret指令时就会弹出main()的地址
 after_page_tables:
     pushl $0						# These are the parameters to main :-)
     pushl $0						# 这些是调用main程序的参数(指init/main.c).
