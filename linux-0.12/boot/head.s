@@ -20,14 +20,14 @@
  */
 .text
 .globl idt, gdt, pg_dir, tmp_floppy_area
-# 页目录将会存放在这里
+/***** 页目录表（0x00000000）将会存放在这里 *****/
 pg_dir:
 
 # head.s主要做了四件事：
 # 1. 将系统堆栈放置在stack_start指向的数据区（之后，该栈就被用作任务0和任务1共同使用的用户栈）
 # 2. 重新加载了新的中断描述符表和全局段描述符表
 # 3. 初始化页目录表和4个内核专属的页表
-# 4. 跳转到init/main.c中的main运行
+# 4. 通过ret跳转到init/main.c中的main运行
 .globl startup_32
 startup_32:
     movl $0x10, %eax
@@ -42,6 +42,7 @@ startup_32:
     
     # 因为修改了gdt（段描述符中的段限长8MB改成了16MB），所以需要重新装载所有的段寄存器。CS代码段寄存器
     # 已经在setup_gdt中重新加载过了。
+
     movl $0x10, %eax        # reload all the segment registers
     mov %ax, %ds            # after changing gdt. CS was already
     mov %ax, %es            # reloaded in 'setup_gdt'
@@ -64,17 +65,16 @@ startup_32:
  * int 16 for math errors.
  */
 /*
- * 注意！在下面这段程序中，486应该将位16置位，以检查在超级用户模式下的写保护，此后"verify_area()"调用就
- * 不需要了。486的用户通常也会想将NE(#5)置位，以便对数学协处理器的出错使用int 16。
+ * 注意！在下面这段程序中，486应该将位16置位，以检查在超级用户模式下的写保护，此后"verify_area()"
+ * 调用就不需要了。486的用户通常也会想将NE(#5)置位，以便对数学协处理器的出错使用int 16。
  *
  */
- # 上面原注释中提到的486CPU中CR0控制器的位16是写保护标志WP，用于禁止超级用户级的程序向一般用户只读页面中
- # 进行写操作。该标志主要用于操作系统在创建新进程时实现写时复制方法。
+ # 上面原注释中提到的486CPU中CR0控制器的位16是写保护标志WP，用于禁止超级用户级的程序向一般用户只读
+ # 页面中进行写操作。该标志主要用于操作系统在创建新进程时实现写时复制方法。
 
- # 下面这段程序用于检查数学协处理器芯片是否存在。
+ # 下面这段程序用于检查数学协处理器芯片是否存在
  # 方法是修改控制寄存器CR0，在假设存在协处理器的情况下执行一个协处理器指令，如果出错的话则说明协处理器
  # 芯片不存在，需要设置CR0中的协处理器仿真位EM(位2)，并复位协处理器存在标志MP(位1)。
-
     movl %cr0, %eax						# check math chip
     andl $0x80000011, %eax				# Save PG,PE,ET
     /* "orl $0x10020,%eax" here for 486 might be good */
@@ -94,14 +94,13 @@ startup_32:
 # 清除状态字和所有浮点栈式寄存器。非等待形式的这条指令(fninit)还会让协处理器终止执行当前正在执行的任何
 # 先前的算术操作。
 # fstsw指令取协处理器的状态字。
-# 如果系统中存在协处理器的话，那么在执行了fninit指令后其状态字低字节肯定为0
+# 如果系统中存在协处理器的话，那么在执行了fninit指令后其状态字低字节肯定为0。
 
 check_x87:
-    fninit								# 向协处理器发出初始化命令
-    fstsw %ax							# 取协处理器状态字到ax寄存器中
+    fninit
+    fstsw %ax
     cmpb $0, %al						# 初始化状态字应该为0,否则说明协处理器不存在
     je 1f								/* no coprocessor: have to set bits */
-                                        # 如果存在则向前跳转到标号1处，否则改写cr0。
     movl %cr0, %eax
     xorl $6, %eax						/* reset MP, set EM */
     movl %eax, %cr0
@@ -188,24 +187,24 @@ pg2:
 .org 0x4000
 pg3:
 
-.org 0x5000     # 定义下面的内存数据块从偏移0x5000处开始
+.org 0x5000
 /*
  * tmp_floppy_area is used by the floppy-driver when DMA cannot
  * reach to a buffer-block. It needs to be aligned, so that it isn't
  * on a 64kB border.
  */
 /*
- * 当DMA(直接存储器访问)不能访问缓冲块时，下面的tmp_floppy_area内存块就可供软盘驱动程序使用。
- * 其地址需要对齐调整，这样就不会跨越64KB边界
+ * 当DMA(直接存储器访问)不能访问缓冲块时，下面的tmp_floppy_area内存块就可供软盘
+ * 驱动程序使用。其地址需要对齐调整，这样就不会跨越64KB边界
  */
 
 tmp_floppy_area:
     .fill 1024,1,0
 
-# 为跳转到init/main.c中的main()函数作准备工作
+/***** 为跳转到init/main.c中的main()函数作准备工作 *****/
 # 前面3个入栈0值应该分别表示envp，argv指针和argc的值（main()没有用到）
 # pushl $L6    压入返回地址
-# pushl $main  压入main()函数的入口地址。
+# pushl $main  压入main函数的入口地址
 # 当head.s最后执行ret指令时就会弹出main()的地址
 after_page_tables:
     pushl $0						# These are the parameters to main :-)
@@ -288,8 +287,7 @@ ignore_int:
  # 由mm模块管理，它涉及页面映射操作。内核中所有其它函数就是这里指的"普通"函数。
 
 
- # 在内存物理地址0x0处开始存放1页页目录表和4页页表。页目录表是系统所有进程共用的，而这里的4页页
- # 表则属于内核专用，它们一一映射线性地址起始16MB空间范围到物理内存上。
+# 初始化页目录表前4项和4个页表
 .align 4
 setup_paging:
     movl $1024 * 5, %ecx				/* 5 pages - pg_dir+4 page tables */

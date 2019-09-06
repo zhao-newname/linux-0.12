@@ -43,9 +43,8 @@ start:
 ! posterity.
 ; ok，整个读磁盘过程都正常，现在将光标位置保存以备今后使用。
 
-; 将ds置成#INITSEG(0x9000)。这已经在bootsect程序中设置过，但是现在
-; 是setup程序，Linus觉得需要再重新设置一下。
 	mov	ax,#INITSEG		! this is done in bootsect already, but...
+						; 这已经在bootsect程序中设置过ds，但是...
 	mov	ds,ax
 
 ;;;;; 1.获取系统初始化所需要的参数 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -166,12 +165,12 @@ do_move:
 	jmp	do_move
 
 ! then we load the segment descriptors
-;;;;; 3. 此后，我们加载段描述符（临时gdt，ldt表） ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;; 3. 此后，我们加载段描述符表（临时gdt，ldt表） ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 end_move:
 	mov	ax,#SETUPSEG	! right, forgot this at first. didn't work :-)
-	mov	ds,ax 			; 代码本身就处于SETUPSEG (0x9020) 中，所以说这2句并没什么用
-	lidt	idt_48		! load idt with 0,0		; 加载IDT寄存器
+	mov	ds,ax
+	lidt	idt_48		! load idt with 0,0					 ; 加载IDT寄存器
 	lgdt	gdt_48		! load gdt with whatever appropriate ; 加载GDT寄存器
 
 ! that was painless, now we enable A20
@@ -247,14 +246,14 @@ end_move:
 	mov	ax,#0x0001	! protected mode (PE) bit
 	lmsw	ax		! This is it!				; 将CR0的位0置1开启保护模式
 	jmpi	0,8		! jmp offset 0 of segment 8 (cs)
-	; 我们已经将system模块移动到0x00000开始的地方，所以这里的偏移地址是0。
-	; 这里的段值8已经是保护模式下的段选择符。
+	; 偏移地址是0，因为system模块已被移动到0x00000处了。
+	; 段值8则是保护模式下的段选择符。
 	; 段选择符长度为16位（2字节）：
-	; 	位0-1	- 表示请求的特权级0-3 ，linux操作系统只用到两级：0级（系统级）和3级（用户级）
+	; 	位0-1	- 表示请求的特权级0-3 ，linux0.12只用到两级：0级（系统级）和3级（用户级）
 	;	位2		- 用于选择全局描述符表(0)还是局部描述符表(1)
 	; 	位3-15	- 描述符表项的索引
-	; 所以段选择符8(0000,0000,0000,1000)表示请求特权级0、使用全局描述符表gdt中的第1项；
-	; 该项指出代码的基地址是0，因此这里的跳转指令就会去执行system中的代码。
+	; 段选择符8(0000,0000,0000,1000)表示请求特权级0、使用全局描述符表gdt中的第1项（该项指出代码
+	; 的基地址是0），因此这里的跳转指令就会去执行system中的代码。
 
 ;;;;;;;;;;;;;;;; setup程序到这就结束了 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -628,7 +627,7 @@ docr:	push	ax
 	ret	
 ;;;;; 跟显示卡相关代码至此结束 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;;; 全局描述符表（每个描述符项长8个字节）
+;;;;; 全局描述符表（临时，每个描述符项长8个字节）
 gdt:
 	.word	0,0,0,0		! dummy	;第1个描述符，不用
 
@@ -644,15 +643,17 @@ gdt:
 	.word	0x00C0		! granularity=4096, 386	; 颗粒度4K，32位
 
 ; 加载中断描述符表寄存器指令lidt要求的6字节操作数。
-; CPU要求在进入保护模式之前需设置IDT表，因此这里先设置一个长度为0的空表。
+; 注：CPU要求在进入保护模式之前需设置idt表，因此这里先设置一个长度为0的空表。
 idt_48:
-	.word	0			! idt limit=0	; IDT的限长
+	.word	0			! idt limit=0	; idt的限长
 	.word	0,0			! idt base=0L	; idt表在线性地址空间中的32位基地址
 
 ; 加载全局描述符表寄存器指令lgdt要求的6字节操作数。
 gdt_48:
-	.word	0x800		! gdt limit=2048, 256 GDT entries 	; 表限长2k，8个字节等于1个描述符，共有256项
-	.word	512+gdt,0x9	! gdt base = 0X9xxxx 				; 0x90200 + gdt
+	.word	0x800		! gdt limit=2048, 256 GDT entries 	
+						; 表限长2k
+	.word	512+gdt,0x9	! gdt base = 0X9xxxx 
+						; （线性地址空间）基地址：0x90200 + gdt
 
 ;;;;; 以下跟显示卡相关（可以不看） ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 msg1:		.ascii	"Press <RETURN> to see SVGA-modes available or any other key to continue."

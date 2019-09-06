@@ -2,7 +2,7 @@
 ! 0x3000 is 0x30000 bytes = 196kB, more than enough for current
 ! versions of linux
 ; SYS_SIZE是要加载的系统模块长度的节数（每节有16b）。0x3000节就等
-; 于0x30000 bytes=192KB，对于当前的版本空间已足够了。
+; 于0x30000bytes=192KB，对于当前的版本空间已足够了。
 
 ; 该头文件里定义了内核用到的一些常数符号和Linus自己使用的默认硬盘默认参数块。
 #include <linux/config.h>
@@ -84,7 +84,7 @@ start:
     movw            ; 此处结束后，代码已经成功移动到0x90000
     jmpi go,INITSEG ; 段间跳转(Jump Intersegment)，跳转到INITSEG:go(段地址:段内偏移)处。
 
-;;;;; 2. 从go处开始，CPU在已移动到0x90000处继续执行 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;; 从go处开始，CPU在已移动到0x90000处继续执行 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; 以下几行代码设置了几个段寄存器，包括栈寄存器ss和sp。
 go:	mov	ax,cs
@@ -127,8 +127,8 @@ go:	mov	ax,cs
  * fs = 0, gs = 参数表所在段值。
  */
 
-;;; 修改软驱参数表
-; BIOS设置的中断0x1e的中断向量值是软驱参数表地址。该向量值位于内存0x1e*4=0x78处。这段代码首先从内
+;;;;; 修改软驱参数表 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; BIOS中断0x1e的中断向量值是软驱参数表地址。该向量值位于内存0x1e*4=0x78处。这段代码首先从内
 ; 存0x0000:0x0078处复制原软驱参数表到0x9000:0xfef4处，然后修改表中的每磁道最大扇区数为18。
 
     push	#0
@@ -166,7 +166,7 @@ go:	mov	ax,cs
 ; 在bootsect程序块后紧跟着加载setup模块的代码数据。
 ; 在移动代码时，es的值已被设置好。
 
-;;;;; 3. 加载setup模块到0x90200开始处，共读4个扇区 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;; 2. 加载setup模块到0x90200开始处，共读4个扇区 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; 如果读出错，显示磁盘上出错扇区位置，则复位驱动器，并重试，没有退路。
 load_setup:
@@ -199,7 +199,7 @@ ok_load_setup:
     seg cs
     mov	sectors,cx      ; 保存每磁道扇区数。
     mov	ax,#INITSEG
-    mov	es,ax           ; 因为上面取磁盘参数中断改了es的值，这里需要改回来
+    mov	es,ax           ; 上面取磁盘参数中断改了es的值，这里需要改回来
 
 ! Print some inane message
 ; 在显示一些信息('Loading\r\n'，共9个字符)。
@@ -215,7 +215,7 @@ ok_load_setup:
 ! ok, we've written the message, now
 
 ! we want to load the system (at 0x10000)
-;;;;; 4. 将system模块加载到0x10000(64K)处 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;; 3. 将system模块加载到0x10000(64K)处 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
     mov	ax,#SYSSEG
     mov	es,ax			! segment of 0x010000
     call	read_it 	; 读磁盘上system模块
@@ -255,7 +255,7 @@ root_defined:
 ! the setup-routine loaded directly after
 ! the bootblock:
 
-;;;;; 5. 到此，所有程序都加载完毕，我们就跳转到setup程序去 ;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;; 4. 到此，所有程序都加载完毕，我们就跳转到setup程序去 ;;;;;;;;;;;;;;;;;;;;;;;;;
     jmpi	0,SETUPSEG
 
 ;;;;; bootsect.S程序到此就结束了 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -290,10 +290,7 @@ rp_read:
     jb ok1_read
     ret
 ok1_read:
-; 计算和验证当前磁道需要读取的扇区数，放在ax寄存器中。
-; 根据当前磁道还未读取的扇区数以及段内数据字节开始偏移位置，计算如果全部读取这些未读扇区，所
-; 读总字节数是否会超过64KB段长度的限制。若会超过，则根据此次最多能读入的字节数(64KB–段内
-; 偏移位置)，反算出此次需要读取的扇区数。
+    ; 计算和验证当前磁道需要读取的扇区数，放在ax寄存器中。
     seg cs
     mov ax,sectors
     sub ax,sread
@@ -310,7 +307,7 @@ ok2_read:
     mov cx,ax
     add ax,sread
     seg cs
-    cmp ax,sectors 	; 若当前磁道还有扇区未读完，则跳转到ok3_read。
+    cmp ax,sectors
     jne ok3_read
     mov ax,#1
     sub ax,head
@@ -483,4 +480,3 @@ endtext:
 enddata:
 .bss
 endbss:
-
