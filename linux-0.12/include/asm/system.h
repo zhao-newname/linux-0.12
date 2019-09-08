@@ -25,12 +25,10 @@ __asm__ (										\
 
 /**
  * 设置门描述符宏
- * 根据参数中的中断或异常过程地址addr，门描述符类型type和特权级信息dpl，设置位于地址gate_addr
- * 处的门描述符。
- * @param[in]	gate_addr	描述符地址
- * @param[in]	type		描述符类型域值
- * @param[in]	dpl			描述符特权级
- * @param[in]	addr		偏移地址
+ * @param[in]	gate_addr	在中断描述符表中的偏移量
+ * @param[in]	type		门描述符类型
+ * @param[in]	dpl			特权级信息
+ * @param[in]	addr		中断或异常过程函数地址
  */
 #define _set_gate(gate_addr, type, dpl, addr)				\
 	__asm__ ("movw %%dx,%%ax\n\t"							\
@@ -45,7 +43,6 @@ __asm__ (										\
 
 /** 
  * 设置中断门函数(自动屏蔽随后的中断)
- * &idt[n]是中断描述表中中断号n对应项的偏移值；中断描述符的类型是14，特权级是0
  * @param[in]	n		中断号
  * @param[in]	addr	中断程序偏移地址
  */
@@ -53,7 +50,6 @@ __asm__ (										\
 
 /** 
  * 设置陷阱门函数
- * &idt[n]是中断描述符表中中断号n对应项的偏移值；中断描述符的类型是15，特权级是0
  * @param[in]	n		中断号
  * param[in]	addr	中断程序偏移地址
  */
@@ -61,9 +57,6 @@ __asm__ (										\
 
 /**
  * 设置系统陷阱门函数
- * &idt[n]是中断描述符表中中断号n对应项的偏移值；中断描述符的类型是15，特权级是3。上面
- * set_trap_gate()设置的描述符的特权级为0，而这里是3。因此set_system_gate()设置的中断处理过程能
- * 够被所有程序执行.例如单步调试,溢出出错和边界超出出错处理.
  * @param[in]	n		中断号
  * @param[in]	addr	中断程序偏移直
  */
